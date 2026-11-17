@@ -1,0 +1,10 @@
+
+
+/downloads/
+/dist/
+
+
+*.pyc
+*.bat
+*.bin
+*.
