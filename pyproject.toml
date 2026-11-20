@@ -1,16 +1,18 @@
 [project]
-name = "py4_downloader"
+name = "py4k_downloader"
 version = "1.0.0"
-description = "Downloader de vídeos e playlists do Youtube em MP4/MP3"
+description = "Downloader de vídeos e playlists do YouTube em MP4/MP3"
 requires-python = ">=3.11"
-depedencies = [
-	"flet>=0.80.0",
-	"yt-dlp>=2024.12.0",
-	]
-
+dependencies = [
+    "flet>=0.80.0",
+    "yt-dlp[default]>=2026.1.0",
+]
 
 [tool.flet]
 org = "com.local"
-product = "Py4K Vídeo Downloader"
+product = "Py4K Video Downloader"
 company = "Py4K"
 copyright = "2026"
+
+[tool.flet.app]
+path = "src"

@@ -4,7 +4,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive
 
-# Dependências de compilação do Flutter Linux + ferramentas AppImage
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
@@ -19,13 +18,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     liblzma-dev \
     libstdc++-12-dev \
     libsecret-1-dev \
+    libmpv-dev \
     libgstreamer1.0-dev \
     libgstreamer-plugins-base1.0-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Instala appimagetool oficial
-RUN curl -L -s "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" -o /usr/local/bin/appimagetool \
-    && chmod +x /usr/local/bin/appimagetool
+# Baixa e extrai o appimagetool para rodar sem FUSE no Docker
+RUN curl -fSL "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" -o /tmp/appimagetool.AppImage \
+    && chmod +x /tmp/appimagetool.AppImage \
+    && cd /tmp && ./appimagetool.AppImage --appimage-extract \
+    && mv /tmp/squashfs-root /opt/appimagetool \
+    && rm /tmp/appimagetool.AppImage
 
 RUN pip install --no-cache-dir "flet>=0.80.0"
 

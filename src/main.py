@@ -1,14 +1,32 @@
-import os
-import time
-import threading
+import os, sys, shutil, time, threading
 import flet as ft
 import yt_dlp
+
+
+# Correção: Garantir que os binários embutidos no Appimage (ffmpeg, ffprobe, deno) estejam na porra do PATH, sem isso o sistema fica capado
+if getattr(sys, "frozen", False) or os.environ.get("APPIMAGE"):
+    bin_dir = os.path.dirname(os.path.abspath(sys.executable))
+    os.environ["PATH"] = f"{bin_dir}:{os.environ.get('PATH', '')}"
+
+class YtdpLogger:
+    def __init__(self):
+        self.erros = []
+
+    def debug(self, msg):
+        pass
+
+    def warning(self, msg):
+        pass
+
+    def error(self, msg):
+        clean_msg = msg.replace("ERROR: ", "").strip()
+        self.erros.append(clean_msg)
 
 
 async def main(page: ft.Page):
     page.title = "Py4K Video Downloader"
     page.window.width = 680
-    page.window.height = 510
+    page.window.height = 520
     page.window.resizable = False
     page.theme_mode = ft.ThemeMode.DARK
     page.padding = 28
@@ -23,7 +41,7 @@ async def main(page: ft.Page):
     clipboard = ft.Clipboard()
     file_picker = ft.FilePicker()
 
-    # --- Componentes de Interface ---
+    # --- Interface ---
     url_input = ft.TextField(
         label="Link do vídeo ou playlist do YouTube",
         hint_text="https://www.youtube.com/watch?v=...",
@@ -48,8 +66,7 @@ async def main(page: ft.Page):
     )
 
     def on_format_change(e):
-        is_mp3 = format_dropdown.value == "MP3"
-        resolution_dropdown.disabled = is_mp3
+        resolution_dropdown.disabled = format_dropdown.value == "MP3"
         page.update()
 
     format_dropdown = ft.Dropdown(
@@ -111,7 +128,7 @@ async def main(page: ft.Page):
     )
     status_text = ft.Text("Pronto para baixar.", size=13, color=ft.Colors.GREY_400)
 
-    # --- Lógica de Download (yt-dlp) ---
+    # --- Download ---
     def progress_hook(d):
         nonlocal last_ui_update
         now = time.time()
@@ -134,12 +151,15 @@ async def main(page: ft.Page):
 
         elif d["status"] == "finished":
             progress_bar.value = 1.0
-            status_text.value = "Processando / mesclando áudio e vídeo com FFmpeg..."
+            status_text.value = "Mesclando áudio e vídeo com FFmpeg..."
             status_text.color = ft.Colors.AMBER_300
             page.update()
 
     def run_download(url: str, fmt: str, res: str, out_dir: str):
         os.makedirs(out_dir, exist_ok=True)
+        logger = YtdlpLogger()
+        ffmpeg_bin = shutil.which("ffmpeg")
+
         output_template = os.path.join(
             out_dir, "%(playlist_title&{}/|)s%(title)s.%(ext)s"
         )
@@ -147,8 +167,17 @@ async def main(page: ft.Page):
         ydl_opts = {
             "outtmpl": output_template,
             "progress_hooks": [progress_hook],
-            "ignoreerrors": True,
+            "logger": logger,
+            "ignoreerrors": "only_download",
+            "retries": 10,
+            "fragment_retries": 10,
+            "file_access_retries": 5,
+            "continuedl": True,
+            "concurrent_fragment_downloads": 3,
         }
+
+        if ffmpeg_bin:
+            ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_bin)
 
         if fmt == "MP3":
             ydl_opts.update(
@@ -165,10 +194,10 @@ async def main(page: ft.Page):
             )
         else:
             if res == "best":
-                video_fmt = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+                video_fmt = "bestvideo+bestaudio/best"
             else:
                 height = res.replace("p", "")
-                video_fmt = f"bestvideo[height<={height}][ext=mp4]+bestaudio[ext=m4a]/best[height<={height}][ext=mp4]/best"
+                video_fmt = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
 
             ydl_opts.update(
                 {
@@ -179,11 +208,17 @@ async def main(page: ft.Page):
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
+                exit_code = ydl.download([url])
 
-            status_text.value = "Download concluído com sucesso!"
-            status_text.color = ft.Colors.GREEN_400
-            progress_bar.value = 1.0
+            if exit_code == 0 and not logger.errors:
+                status_text.value = "Download concluído com sucesso!"
+                status_text.color = ft.Colors.GREEN_400
+                progress_bar.value = 1.0
+            else:
+                err_detail = logger.errors[-1] if logger.errors else "Falha parcial no download."
+                status_text.value = f"Aviso/Erro: {err_detail[:95]}"
+                status_text.color = ft.Colors.AMBER_300
+                progress_bar.value = 0
         except Exception as ex:
             status_text.value = f"Erro no download: {ex}"
             status_text.color = ft.Colors.RED_400
@@ -227,7 +262,6 @@ async def main(page: ft.Page):
         on_click=start_download,
     )
 
-    # --- Montagem do Layout ---
     page.add(
         ft.Column(
             spacing=18,
@@ -265,13 +299,8 @@ if __name__ == "__main__":
         os.environ.get("APPIMAGE")
         or os.environ.get("DISPLAY")
         or os.environ.get("WAYLAND_DISPLAY")
-        )
+    )
     if is_native:
         ft.run(main)
     else:
         ft.run(main, view=ft.AppView.WEB_BROWSER, host="0.0.0.0", port=8550)
-
-
-    is_desktop = bool(os.environ.get("DISPLAY"))
-    view_mode = ft.AppView.FLET_APP if is_desktop else ft.AppView.WEB_BROWSER
-    ft.run(main, view=view_mode, host="0.0.0.0", port=8550)
